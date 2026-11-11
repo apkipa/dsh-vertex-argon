@@ -258,6 +258,7 @@ export function gemini4StreamSimple(
   defaultLevel = 'medium',
   upstreamModelId = requestModel.id,
   longDecode = true,
+  watchdogDisabled = false,
   recordDiagnostic,
   servicePolicy = { tier: 'standard', headers: {} },
   captureOptions = {},
@@ -335,6 +336,7 @@ export function gemini4StreamSimple(
                 enabled: longDecode !== false,
                 serviceTier: requestModel.api === 'google-generative-ai' ? servicePolicy.tier : undefined,
                 tracker,
+                watchdogDisabled,
               },
             },
           },
@@ -375,7 +377,7 @@ export function installGemini4PiAiPatch(recordDiagnostic, configInput = {}, resp
         const cfg = resolveConfigValues(configInput)
         return gemini4StreamSimple(
           (m, c, o) => piProvider.stream(m, c, o), requestModel, context, options,
-          defaultReasoning, requestModel.id, cfg.longDecode, recordDiagnostic,
+          defaultReasoning, requestModel.id, cfg.longDecode, cfg.watchdogDisabled, recordDiagnostic,
           resolveServicePolicy(cfg, requestModel.api, 'generate-content'),
           { responseHub, retainRawResponses: cfg.retainRawResponses },
         )
@@ -421,6 +423,8 @@ export function resolveConfigValues(raw = {}) {
   const vertexPaygoOnly = readVal(source?.vertexPaygoOnly) ?? false
   const retainRawResponses = readVal(source?.retainRawResponses) ?? false
   if (typeof retainRawResponses !== 'boolean') throw new LlmError('Raw response retention consent must be an explicit boolean.', 'INVALID_CONFIG')
+  const watchdogDisabled = readVal(source?.watchdogDisabled) ?? false
+  if (typeof watchdogDisabled !== 'boolean') throw new LlmError('Watchdog opt-out must be an explicit boolean.', 'INVALID_CONFIG')
   if (![googleServiceTier, vertexServiceTier].every(tier => SERVICE_TIERS.includes(tier))) throw new LlmError('Invalid Argon service tier.', 'INVALID_CONFIG')
   if (typeof vertexPaygoOnly !== 'boolean') throw new LlmError('Vertex PayGo-only selection must be a boolean.', 'INVALID_CONFIG')
   const interactionsBackground = readVal(source?.interactionsBackground) ?? false
@@ -449,6 +453,7 @@ export function resolveConfigValues(raw = {}) {
     vertexServiceTier,
     vertexPaygoOnly,
     retainRawResponses,
+    watchdogDisabled,
     interactionsBackground,
     allowInteractionStorage,
     routes: source?.routes,
@@ -485,6 +490,7 @@ export function argonProvider(nativeVertex, models, defaultLevel = 'medium', nat
           defaultLevel,
           officialUpstreamModel(configured.id),
           longDecode,
+          serviceConfig.watchdogDisabled === true,
           recordDiagnostic,
           policy,
           { responseHub, retainRawResponses: serviceConfig.retainRawResponses }, structuredOutput,
@@ -501,6 +507,7 @@ export function argonProvider(nativeVertex, models, defaultLevel = 'medium', nat
         defaultLevel,
         officialUpstreamModel(configured.id),
         longDecode,
+        serviceConfig.watchdogDisabled === true,
         recordDiagnostic,
         resolveServicePolicy(serviceConfig, 'google-vertex', 'generate-content'),
         { responseHub, retainRawResponses: serviceConfig.retainRawResponses }, structuredOutput,
@@ -589,6 +596,7 @@ export function createArgonAdapter(ctx, configInput, nativeVertex = googleVertex
     const key = JSON.stringify({
       r: cfg.reasoning,
       ld: cfg.longDecode,
+      wd: cfg.watchdogDisabled,
       cw: cfg.contextWindow,
       mt: cfg.maxTokens,
       visible: cfg.showInModelPicker,

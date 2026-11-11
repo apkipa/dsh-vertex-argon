@@ -178,6 +178,10 @@ window.__ModuleLoader__.load({
         longDecodeHint: '默认开启，同时控制 > 65,536 预算上限与 GenerateContent 客户端检查点续传（不代表每轮都会写满）。关闭时仅停用 GenerateContent 客户端续传（Interactions 事件流重连仍保留），且有效预算上限受限为 ≤ 65,536（同时受窗口预留限制），不会改动原配置值。GenerateContent 在首个检查点前实时显示输出；取得检查点后按检查点确认尾段，断流时仅回放未提交部分。',
         longDecodeOn: '已开启',
         longDecodeOff: '已关闭',
+        watchdogLabel: '禁用内置超时看门狗',
+        watchdogHint: '勾选即禁用逐跳分阶段看门狗：不再因阶段等待超时而中止上游流。单请求上限与宿主流空闲上限仍各自保留（均为 1 小时）。代价是静默卡住的请求要熬到那一层才结束，期间只能手动取消。',
+        watchdogOn: '正常',
+        watchdogOff: '已禁用',
         maxTokensLabel: '最大输出预算（Max Output Tokens）',
         maxTokensHint: '思考、工具调用与正文共用此上限（非字数目标）。配置窗口 > 131,072 时预留 131,072 历史空间（1,048,576 窗口下静态上限为 917,504），并非实时剩余上下文，也不保证输出 1M。',
         contextWindowLabel: '共享上下文窗口（Context Window）',
@@ -263,6 +267,10 @@ window.__ModuleLoader__.load({
         longDecodeHint: 'Enabled by default; controls both > 65,536 budget caps and GenerateContent client checkpoint continuation (does not force every turn to run long). When disabled, only GenerateContent client continuation is turned off (Interactions stream reconnect remains active), and the effective cap is bounded to ≤ 65,536 (and by window headroom) without overwriting your saved maxTokens. GenerateContent streams live before its first checkpoint; after a checkpoint, tails are committed at checkpoints and only uncommitted content is replayed after interruption.',
         longDecodeOn: 'Enabled',
         longDecodeOff: 'Disabled',
+        watchdogLabel: 'Disable Built-in Timeout Watchdog',
+        watchdogHint: 'Checked disables the per-hop phase watchdog only: a stalled upstream no longer aborts on a phase timeout. The per-request cap and the host stream-idle declaration stay in place (1 hour each). A silently stuck request ends at that backstop, or when you cancel it.',
+        watchdogOn: 'Active',
+        watchdogOff: 'Disabled',
         maxTokensLabel: 'Max Output Budget (Max Output Tokens)',
         maxTokensHint: 'Shared ceiling across thinking, tool calls, and visible text (not a word-count target). Configured context windows > 131,072 reserve 131,072 tokens for history (917,504 static cap at 1,048,576); this is not a real-time remaining context meter or a 1M output guarantee.',
         contextWindowLabel: 'Shared Context Window',
@@ -1128,6 +1136,7 @@ window.__ModuleLoader__.load({
       const visible = val.showInModelPicker !== false
       const reasoning = val.reasoning || 'medium'
       const longDecode = val.longDecode !== false
+      const watchdogOff = val.watchdogDisabled === true
       const maxTokens = val.maxTokens || 65536
       const contextWindow = val.contextWindow || 1048576
       const googleProtocol = val.googleProtocol || 'generate-content'
@@ -1176,13 +1185,14 @@ window.__ModuleLoader__.load({
           const ok11 = await setField('googleServiceTier', 'standard')
           const ok12 = await setField('vertexServiceTier', 'standard')
           const ok13 = await setField('vertexPaygoOnly', false)
+          const ok14 = await setField('watchdogDisabled', false)
           const ok6 = await setField('googleProtocol', 'generate-content')
           const ok7 = await setField('vertexProtocol', 'generate-content')
           const ok8 = await setField('interactionsBackground', false)
           const ok9 = await setField('allowInteractionStorage', false)
           const ok10 = await setField('retainRawResponses', false)
           if (!alive.current) return
-          setNotice(ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8 && ok9 && ok10 && ok11 && ok12 && ok13 ? 'saved' : 'error')
+          setNotice(ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8 && ok9 && ok10 && ok11 && ok12 && ok13 && ok14 ? 'saved' : 'error')
         } catch { if (alive.current) setNotice('error') }
         finally { writing.current = false; if (alive.current) setPending(false) }
       }
@@ -1322,6 +1332,16 @@ window.__ModuleLoader__.load({
             }, t(pending ? 'saving' : longDecode ? 'longDecodeOn' : 'longDecodeOff')),
           ),
           h('p', { className: 'muted', id: 'vertex-argon-longdecode-hint' }, t('longDecodeHint')),
+          h('div', { className: 'row', style: { marginTop: '12px' } },
+            h('strong', { id: 'vertex-argon-watchdog-label' }, t('watchdogLabel')),
+            h('button', {
+              type: 'button', role: 'switch', 'aria-checked': watchdogOff,
+              'aria-labelledby': 'vertex-argon-watchdog-label',
+              'aria-describedby': 'vertex-argon-watchdog-hint',
+              disabled, onClick: () => updateField('watchdogDisabled', !watchdogOff),
+            }, t(pending ? 'saving' : watchdogOff ? 'watchdogOff' : 'watchdogOn')),
+          ),
+          h('p', { className: 'muted', id: 'vertex-argon-watchdog-hint' }, t('watchdogHint')),
           h('div', { className: 'row', style: { marginTop: '12px' } },
             h('strong', null, t('maxTokensLabel') + ' (' + fmt(maxTokens) + (isCustomMaxTokens ? t('customValueTag') : '') + ')'),
             h('div', { className: 'group', role: 'group', 'aria-label': t('maxTokensLabel') },

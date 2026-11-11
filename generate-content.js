@@ -8,7 +8,7 @@ export const MAX_CONTINUATION_HOPS = 32
 export const RECONNECT_INITIAL_DELAY_MS = 500
 export const RECONNECT_MAX_DELAY_MS = 10000
 export const RECONNECT_JITTER_RATIO = 0.1
-export const STREAM_READ_TIMEOUT_MS = 20 * 60 * 1000
+export const STREAM_READ_TIMEOUT_MS = 60 * 60 * 1000
 export const MAX_SERVER_RETRY_DELAY_MS = 60_000
 export const STREAM_INITIAL_TTFT_TIMEOUT_MS = 180_000
 export const STREAM_THINKING_TIMEOUT_MS = 180_000
@@ -119,8 +119,9 @@ export function waitWithAbort(ms, signal) {
 
 
 // Only awaited upstream work consumes the idle budget. No timer survives a
-// yield to the consumer, and every hop owns an isolated abort signal.
-function createHopWatchdog(userSignal, overrides = {}) {
+// yield to the consumer, and every hop owns an isolated abort signal. `disabled`
+// keeps that abort plumbing but never arms a timer, so only the user ends a quiet hop.
+function createHopWatchdog(userSignal, overrides = {}, disabled = false) {
   const controller = new AbortController()
   const defaults = {
     'initial-ttft': STREAM_INITIAL_TTFT_TIMEOUT_MS, thinking: STREAM_THINKING_TIMEOUT_MS,
@@ -175,6 +176,7 @@ function createHopWatchdog(userSignal, overrides = {}) {
       const interruption = new Promise((_, reject) => {
         rejectAbort = () => reject(timeoutError ?? controller.signal.reason)
         controller.signal.addEventListener('abort', rejectAbort, { once: true })
+        if (disabled) return
         timer = setTimeout(() => {
           timeoutError = Object.assign(streamError('Argon stream phase timed out: ' + phase, 'STREAM_PHASE_TIMEOUT'), { status: 504, phase: 'stream', requestSubmitted: true })
           controller.abort(timeoutError)
@@ -214,6 +216,7 @@ const value = (usage, key) => usage?.[key] ?? 0
 export async function continueArgonRequestStream(apiClient, original, request, meta = {}) {
   const { [LONG_DECODE_SYMBOL]: _, ...httpOptions } = request.httpOptions ?? {}
   const enabled = meta.enabled !== false
+  const watchdogDisabled = meta.watchdogDisabled === true
   if (enabled && apiClient.isVertexAI?.()) httpOptions.apiVersion = 'v1beta1'
   if (enabled && httpOptions.timeout === undefined) httpOptions.timeout = STREAM_READ_TIMEOUT_MS
   const tracker = meta.tracker
@@ -252,7 +255,7 @@ export async function continueArgonRequestStream(apiClient, original, request, m
       const startToken = token
       const body = hop === 1 ? initialBody : JSON.stringify({ ...continuationBody, ...(token ? { continuationToken: token } : {}) })
       const hopTracker = tracker?.beginHop({ hopIndex: hop, trigger, usedContinuationToken: Boolean(token), backoffDelayMs: delayMs, body })
-      const watchdog = createHopWatchdog(request.abortSignal, meta.phaseTimeouts)
+      const watchdog = createHopWatchdog(request.abortSignal, meta.phaseTimeouts, watchdogDisabled)
       let iterator, sourceDone = false
       let pending = [], pendingBytes = 0, pendingHasContent = false
       let latestUsage, committedUsage, finishReason, failure

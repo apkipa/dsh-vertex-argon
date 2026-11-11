@@ -39,6 +39,7 @@ export const Config = z.object({
   vertexServiceTier: z.union(SERVICE_TIERS).default('standard').volatile(),
   vertexPaygoOnly: z.boolean().default(false).volatile(),
   retainRawResponses: z.boolean().default(false).volatile(),
+  watchdogDisabled: z.boolean().default(false).volatile(),
   interactionsBackground: z.boolean().default(false).volatile(),
   allowInteractionStorage: z.boolean().default(false).volatile(),
   contextWindow: z.number().step(1).min(1).max(1048576).default(1048576).volatile(),
